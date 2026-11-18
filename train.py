@@ -26,10 +26,10 @@ random.shuffle(dataset)
 split = int(0.8 * len(dataset))
 train, test = dataset[:split], dataset[split:]
 
-n = MLP(64, [16, 10])
+n = MLP(64, [32, 32, 10])
 
 k = 0
-batch = 20
+batch = 30
 total_steps = batch * len(train)
 
 for epoch in range(batch):
@@ -37,7 +37,7 @@ for epoch in range(batch):
     epoch_start = time.perf_counter()
     epoch_loss = 0
     for _data, _label in train:
-        lr = 0.1 - 0.09 * k / total_steps
+        lr = 0.1 - 0.095 * k / total_steps
         k += 1
 
         label_pred = n(_data)
@@ -57,7 +57,6 @@ for epoch in range(batch):
             print("Loss is nan")
             break
             
-        
         epoch_loss += loss.data
 
     epoch_loss /= len(train)
