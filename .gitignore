@@ -1,4 +1,4 @@
 __pycache__
 .pytest_cache/
-log/
+logs/
 .DS_Store
