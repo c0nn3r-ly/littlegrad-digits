@@ -33,24 +33,27 @@ random.shuffle(dataset)
 split = int(0.8 * len(dataset))
 train, test = dataset[:split], dataset[split:]
 
-n = MLP(64, [32, 32, 10]) #init a model from scratch
-""" open a model
-with open("logs/xxx.json") as f:
+# n = MLP(64, [32, 32, 10]) #init a model from scratch
+#open a model
+with open("logs/20261118-0752_64-32-32-10.json") as f:
     r = json.load(f)
 n = MLP(r["nin"], r["nouts"])
 for p, w in zip(n.parameters(), r["weights"]):
     p.data = w
-"""
-k = 0
-batch = 30
-total_steps = batch * len(train)
+
+batch = 5
+prevbatches = 30
+k = prevbatches * len(train)
+total_steps = (batch + prevbatches) * len(train)
 
 for epoch in range(batch):
     print(f"Round: {epoch + 1} / {batch} started!")
     epoch_start = time.perf_counter()
     epoch_loss = 0
+
     for _data, _label in train:
-        lr = 0.03 - 0.029 * k / total_steps
+        # lr = 0.03 - 0.029 * k / total_steps
+        lr = 0.0001
         k += 1
 
         label_pred = n(_data)
