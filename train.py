@@ -13,6 +13,12 @@ def accuracy(model, samples):
         correct += (pred == y)
     return correct / len(samples)
 
+sizes = "-".join(str(s) for s in [64] + [32, 32, 10])
+stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M")
+
+log_dir = pathlib.Path(__file__).resolve().parent / "logs"
+log_dir.mkdir(exist_ok=True)
+
 random.seed(0)
 
 start = time.perf_counter()
@@ -75,15 +81,9 @@ for x, y in test[:5]:
     out = n(x)
     print(y, [round(o.data, 2) for o in out])
 
-sizes = "-".join(str(s) for s in [64] + 10)
-stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M")
-
-log_dir = pathlib.Path(__file__).resolve().parent / "logs"
-log_dir.mkdir(exist_ok=True)
-
 result = {
     "nin": 64,
-    "nouts": 10,
+    "nouts": [32, 32, 10],
     "epochs": batch,
     "final_loss": epoch_loss,
     "train_acc": accuracy(n, train),
