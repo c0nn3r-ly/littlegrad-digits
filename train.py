@@ -3,10 +3,7 @@ import math
 import time
 from sklearn.datasets import load_digits
 from micrograd.littlegrad.nn import MLP
-
-random.seed(0)
-
-start = time.perf_counter()
+import json, pathlib, datetime
 
 def accuracy(model, samples):
     correct = 0
@@ -15,6 +12,10 @@ def accuracy(model, samples):
         pred = max(range(10), key=lambda i: out[i].data)
         correct += (pred == y)
     return correct / len(samples)
+
+random.seed(0)
+
+start = time.perf_counter()
 
 digits = load_digits()
 
@@ -26,8 +27,14 @@ random.shuffle(dataset)
 split = int(0.8 * len(dataset))
 train, test = dataset[:split], dataset[split:]
 
-n = MLP(64, [32, 32, 10])
-
+n = MLP(64, [32, 32, 10]) #init a model from scratch
+""" open a model
+with open("logs/xxx.json") as f:
+    r = json.load(f)
+n = MLP(r["nin"], r["nouts"])
+for p, w in zip(n.parameters(), r["weights"]):
+    p.data = w
+"""
 k = 0
 batch = 30
 total_steps = batch * len(train)
@@ -67,3 +74,21 @@ for epoch in range(batch):
 for x, y in test[:5]:
     out = n(x)
     print(y, [round(o.data, 2) for o in out])
+
+sizes = "-".join(str(s) for s in [64] + 10)
+stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M")
+
+log_dir = pathlib.Path(__file__).resolve().parent / "logs"
+log_dir.mkdir(exist_ok=True)
+
+result = {
+    "nin": 64,
+    "nouts": 10,
+    "epochs": batch,
+    "final_loss": epoch_loss,
+    "train_acc": accuracy(n, train),
+    "test_acc": accuracy(n, test),
+    "weights": [p.data for p in n.parameters()],
+}
+with open(log_dir / f"{stamp}_{sizes}.json", "w") as f:
+    json.dump(result, f)
