@@ -50,7 +50,7 @@ for epoch in range(batch):
     epoch_start = time.perf_counter()
     epoch_loss = 0
     for _data, _label in train:
-        lr = 0.3 - 0.027 * k / total_steps
+        lr = 0.03 - 0.027 * k / total_steps
         k += 1
 
         label_pred = n(_data)
