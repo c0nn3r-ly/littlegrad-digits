@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Littlegrad Digits</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Layout: instrument bench. Left column = input (pad + preprocessing), right = network trace + readout. */
+:root {
+  --bg: #eef2f4;
+  --panel: #fbfcfd;
+  --pad: #ffffff;
+  --fg: #101820;
+  --muted: #5b6a75;
+  --line: #d5dde2;
+  --accent: #0a66c8;
+  --neg: #cf5d22;
+  --font-display: "Space Grotesk", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-body: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c1013; --panel: #12181d; --pad: #0f1418; --fg: #e3eaee; --muted: #8796a1;
+    --line: #243039; --accent: #4c9eff; --neg: #f08a4b; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c1013; --panel: #12181d; --pad: #0f1418; --fg: #e3eaee; --muted: #8796a1;
+  --line: #243039; --accent: #4c9eff; --neg: #f08a4b; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.55; }
+.wrap {
+  max-width: 1200px; margin: 0 auto;
+  padding-block: 28px 44px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 20px;
+}
+.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 32px; }
+h1 { font-family: var(--font-display); font-weight: 600; font-size: 28px; letter-spacing: -0.01em; margin: 0; line-height: 1.15; text-wrap: balance; }
+.sub { margin: 6px 0 0; color: var(--muted); max-width: 60ch; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0; }
+.meta div { display: flex; flex-direction: column; }
+.meta #lang { align-self: center; }
+.meta dt { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.meta dd { margin: 0; font-family: var(--font-mono); font-size: 14px; font-variant-numeric: tabular-nums; }
+.grid { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ph { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.label { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+button {
+  font: 500 12px var(--font-mono); letter-spacing: 0.04em; color: var(--fg);
+  background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; cursor: pointer;
+}
+button:hover { border-color: var(--accent); color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#pad { width: 100%; aspect-ratio: 1; max-width: 100%; display: block; border-radius: 8px; border: 1px solid var(--line); background: var(--pad); touch-action: none; cursor: crosshair; }
+.hint { margin: 0; color: var(--muted); font-size: 13px; }
+.pipe { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.pipe figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1 1 0; min-width: 0; }
+.pipe canvas { width: 100%; max-width: 92px; aspect-ratio: 1; border: 1px solid var(--line); border-radius: 4px; background: var(--pad); }
+.pipe figcaption { font-family: var(--font-mono); font-size: 10.5px; line-height: 1.4; color: var(--muted); text-align: center; }
+.arrow { color: var(--muted); font-family: var(--font-mono); padding-bottom: 34px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.legend i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 6px; }
+.netbox { width: 100%; height: 420px; }
+#net { display: block; width: 100%; height: 100%; }
+.note { margin: 0; color: var(--muted); font-size: 13px; max-width: 72ch; }
+.out { display: grid; grid-template-columns: minmax(170px, 220px) minmax(0, 1fr); gap: 20px; align-items: center; }
+.verdict { display: flex; flex-direction: column; gap: 8px; }
+.big { font-family: var(--font-display); font-weight: 600; font-size: 96px; line-height: 0.9; color: var(--accent); font-variant-numeric: tabular-nums; }
+.big.empty { color: var(--line); }
+.chip { align-self: flex-start; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; padding: 3px 9px; border-radius: 999px; border: 1px solid currentColor; }
+.chip.sure { color: var(--accent); }
+.chip.maybe { color: var(--fg); }
+.chip.unsure { color: var(--neg); }
+.why { margin: 0; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.bars { display: flex; flex-direction: column; gap: 5px; }
+.row { display: grid; grid-template-columns: 16px minmax(0, 1fr) 52px; align-items: center; gap: 10px; font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.track { position: relative; height: 12px; border-radius: 2px; background: var(--bg); }
+.zero { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--line); }
+.fill { position: absolute; top: 2px; bottom: 2px; border-radius: 2px; background: var(--muted); opacity: 0.45; transition: left 0.25s, width 0.25s; }
+.row .v { text-align: right; }
+.row.win { color: var(--fg); font-weight: 500; }
+.row.win .fill { background: var(--accent); opacity: 1; }
+.axis { display: grid; grid-template-columns: 16px minmax(0, 1fr) 52px; gap: 10px; font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+.axis div { display: flex; justify-content: space-between; }
+@media (max-width: 880px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .col-left { max-width: 460px; width: 100%; }
+}
+@media (max-width: 560px) {
+  .out { grid-template-columns: minmax(0, 1fr); }
+  .big { font-size: 72px; }
+  .netbox { height: 360px; }
+}
+@media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
+body { margin: 0; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Littlegrad Digits</h1>
+      <p class="sub" data-i18n="sub">用 littlegrad 手写引擎训练的 MLP。写一个数字，看它从像素一层层传到结论。</p>
+    </div>
+    <dl class="meta">
+      <div><dt data-i18n="dtArch">结构</dt><dd>64 → 32 → 32 → 10</dd></div>
+      <div><dt data-i18n="dtAct">激活</dt><dd>tanh</dd></div>
+      <div><dt data-i18n="dtParams">参数</dt><dd>3,466</dd></div>
+      <div><dt data-i18n="dtAcc">测试准确率</dt><dd>__TEST_ACC__</dd></div>
+      <button id="lang" type="button" aria-label="Switch language / 切换语言">EN</button>
+    </dl>
+  </header>
+
+  <main class="grid">
+    <section class="col col-left">
+      <div class="panel">
+        <div class="ph"><span class="label" data-i18n="pad">画板</span><button id="clear" type="button" data-i18n="clear">清空</button></div>
+        <canvas id="pad" aria-label="手写数字画板"></canvas>
+        <p class="hint" id="hint" data-i18n="hint">已放一个示例 3。直接在上面写就会替换它：按住鼠标或触控板拖动，写一个 0–9 的数字，写大一点、居中一点效果更好。</p>
+      </div>
+      <div class="panel">
+        <div class="ph"><span class="label" data-i18n="pre">预处理</span></div>
+        <div class="pipe">
+          <figure><canvas id="pGray" width="128" height="128"></canvas><figcaption data-i18n="cap1">裁剪居中<br>32×32 灰度</figcaption></figure>
+          <span class="arrow">→</span>
+          <figure><canvas id="pSharp" width="128" height="128"></canvas><figcaption data-i18n="cap2">3×3 锐化<br>阈值 0.5</figcaption></figure>
+          <span class="arrow">→</span>
+          <figure><canvas id="pIn" width="192" height="192"></canvas><figcaption data-i18n="cap3">每 4×4 计数<br>8×8，0–16</figcaption></figure>
+        </div>
+        <p class="note" data-i18n="preNote">和 sklearn 的 load_digits 同一种做法：32×32 黑白位图按 4×4 分块数亮点，每格 0–16，再除以 16 送进网络。</p>
+      </div>
+    </section>
+
+    <section class="col">
+      <div class="panel">
+        <div class="ph">
+          <span class="label" data-i18n="net">网络推理</span>
+          <span class="legend"><span><i style="background:var(--accent)"></i><span data-i18n="lgPos">正贡献</span></span><span><i style="background:var(--neg)"></i><span data-i18n="lgNeg">负贡献</span></span><span><i style="background:var(--accent);height:3px"></i><span data-i18n="lgPath">支撑结论的主路径</span></span></span>
+        </div>
+        <div class="netbox" id="netbox"><canvas id="net" aria-label="网络各层激活与连线"></canvas></div>
+        <p class="note" data-i18n="netNote">每条线是一次推理里的「权重 × 上一层激活」，只画贡献最大的那些。神经元颜色是 tanh 输出：蓝色接近 +1，橙色接近 −1。加粗的线从结论往回追，找到对它推动最大的神经元和像素。</p>
+      </div>
+      <div class="panel out">
+        <div class="verdict">
+          <span class="label" data-i18n="verdict">结论</span>
+          <div class="big" id="big">–</div>
+          <span class="chip" id="chip" hidden></span>
+          <p class="why" id="why">在画板上写一个数字。</p>
+        </div>
+        <div>
+          <div class="bars" id="bars"></div>
+          <div class="axis"><span></span><div><span>−1</span><span>0</span><span>+1</span></div><span></span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+/*__WEIGHTS__*/
+(function () {
+  "use strict";
+  const SIZES = [64, 32, 32, 10];
+
+  const I18N = {
+    zh: {
+      sub: "用 littlegrad 手写引擎训练的 MLP。写一个数字，看它从像素一层层传到结论。",
+      dtArch: "结构", dtAct: "激活", dtParams: "参数", dtAcc: "测试准确率",
+      pad: "画板", clear: "清空",
+      hint: "已放一个示例 3。直接在上面写就会替换它：按住鼠标或触控板拖动，写一个 0–9 的数字，写大一点、居中一点效果更好。",
+      pre: "预处理", cap1: "裁剪居中<br>32×32 灰度", cap2: "3×3 锐化<br>阈值 0.5", cap3: "每 4×4 计数<br>8×8，0–16",
+      preNote: "和 sklearn 的 load_digits 同一种做法：32×32 黑白位图按 4×4 分块数亮点，每格 0–16，再除以 16 送进网络。",
+      net: "网络推理", lgPos: "正贡献", lgNeg: "负贡献", lgPath: "支撑结论的主路径",
+      netNote: "每条线是一次推理里的「权重 × 上一层激活」，只画贡献最大的那些。神经元颜色是 tanh 输出：蓝色接近 +1，橙色接近 −1。加粗的线从结论往回追，找到对它推动最大的神经元和像素。",
+      verdict: "结论", empty: "在画板上写一个数字。",
+      sure: "很确定", maybe: "比较确定", unsure: (w, s) => `犹豫：${w} 还是 ${s}`,
+      whyNeg: (w, v) => `所有输出都是负的，${w} 只是最不像错的那个（${v}）。`,
+      why: (w, v, s, v2, m) => `${w} 的输出是 ${v}，比第二名 ${s}（${v2}）高 ${m}。`,
+      inLong: "输入 8×8", inShort: "输入", h1Long: "隐藏层 1 · 32", h1Short: "层 1", h2Long: "隐藏层 2 · 32", h2Short: "层 2", outLabel: "输出",
+      toggle: "EN", htmlLang: "zh-CN"
+    },
+    en: {
+      sub: "An MLP trained with littlegrad, a hand-written autograd engine. Draw a digit and watch it travel from pixels to a verdict, layer by layer.",
+      dtArch: "Architecture", dtAct: "Activation", dtParams: "Params", dtAcc: "Test acc",
+      pad: "Canvas", clear: "Clear",
+      hint: "A sample 3 is preloaded. Start drawing to replace it: click and drag with a mouse or trackpad to write a digit 0–9. Large and centered works best.",
+      pre: "Preprocessing", cap1: "Crop &amp; center<br>32×32 gray", cap2: "3×3 sharpen<br>threshold 0.5", cap3: "Count per 4×4<br>8×8, 0–16",
+      preNote: "Same recipe as sklearn's load_digits: a 32×32 black-and-white bitmap is counted in 4×4 blocks, giving 0–16 per cell, then divided by 16 and fed to the network.",
+      net: "Network trace", lgPos: "Positive", lgNeg: "Negative", lgPath: "Main path to verdict",
+      netNote: "Each line is one weight × previous-layer activation in this pass; only the largest are drawn. Neuron color is the tanh output: blue near +1, orange near −1. The bold lines trace back from the verdict to the neurons and pixels that pushed it most.",
+      verdict: "Verdict", empty: "Draw a digit on the canvas.",
+      sure: "Confident", maybe: "Fairly sure", unsure: (w, s) => `Torn: ${w} or ${s}`,
+      whyNeg: (w, v) => `Every output is negative; ${w} is just the least wrong (${v}).`,
+      why: (w, v, s, v2, m) => `${w} scores ${v}, ahead of runner-up ${s} (${v2}) by ${m}.`,
+      inLong: "Input 8×8", inShort: "Input", h1Long: "Hidden 1 · 32", h1Short: "H1", h2Long: "Hidden 2 · 32", h2Short: "H2", outLabel: "Output",
+      toggle: "中文", htmlLang: "en"
+    }
+  };
+  let lang = "zh";
+  try { const s = localStorage.getItem("digits-lang"); if (s === "en" || s === "zh") lang = s; } catch (_) {}
+  let T = I18N[lang];
+  function applyStatic() {
+    document.documentElement.lang = T.htmlLang;
+    for (const el of document.querySelectorAll("[data-i18n]")) el.innerHTML = T[el.dataset.i18n];
+    document.getElementById("lang").textContent = T.toggle;
+  }
+
+  // Unpack in littlegrad's parameters() order: layer by layer, neuron by neuron, weights then bias.
+  const LAYERS = [];
+  {
+    let k = 0;
+    for (let l = 0; l < 3; l++) {
+      const nin = SIZES[l], nout = SIZES[l + 1];
+      const W = new Float32Array(nin * nout), b = new Float32Array(nout);
+      for (let j = 0; j < nout; j++) {
+        for (let i = 0; i < nin; i++) W[j * nin + i] = WEIGHTS[k++];
+        b[j] = WEIGHTS[k++];
+      }
+      LAYERS.push({ nin, nout, W, b });
+    }
+  }
+
+  function forward(x) {
+    const acts = [Float32Array.from(x)];
+    for (const L of LAYERS) {
+      const a = acts[acts.length - 1], out = new Float32Array(L.nout);
+      for (let j = 0; j < L.nout; j++) {
+        let z = L.b[j];
+        for (let i = 0; i < L.nin; i++) z += L.W[j * L.nin + i] * a[i];
+        out[j] = Math.tanh(z);
+      }
+      acts.push(out);
+    }
+    return acts;
+  }
+
+  // ---------- colors ----------
+  let C = {};
+  function readColors() {
+    const cs = getComputedStyle(document.documentElement);
+    for (const k of ["bg", "panel", "pad", "fg", "muted", "line", "accent", "neg"]) C[k] = cs.getPropertyValue("--" + k).trim();
+  }
+  function rgba(hex, a) {
+    let h = hex.replace("#", "");
+    if (h.length === 3) h = h.split("").map(c => c + c).join("");
+    const n = parseInt(h, 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${Math.max(0, Math.min(1, a))})`;
+  }
+
+  // ---------- drawing pad ----------
+  const LOGICAL = 280;
+  const pad = document.getElementById("pad");
+  const pctx = pad.getContext("2d");
+  let strokes = [], drawing = false, sampleShown = true;
+
+  function sample3() {
+    const a = [], b = [];
+    for (let t = -160; t <= 90; t += 5) { const r = t * Math.PI / 180; a.push({ x: 138 + 54 * Math.cos(r), y: 94 + 44 * Math.sin(r) }); }
+    for (let t = -90; t <= 160; t += 5) { const r = t * Math.PI / 180; b.push({ x: 138 + 60 * Math.cos(r), y: 188 + 50 * Math.sin(r) }); }
+    return [a, b];
+  }
+
+  function sizePad() {
+    const r = pad.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    pad.width = Math.round(r.width * dpr); pad.height = Math.round(r.width * dpr);
+  }
+  function renderPad() {
+    const s = pad.width / LOGICAL;
+    pctx.setTransform(1, 0, 0, 1, 0, 0);
+    pctx.fillStyle = C.pad; pctx.fillRect(0, 0, pad.width, pad.height);
+    pctx.setTransform(s, 0, 0, s, 0, 0);
+    // faint center guides
+    pctx.strokeStyle = rgba(C.muted, 0.18); pctx.lineWidth = 1 / s; pctx.setLineDash([4, 6]);
+    pctx.beginPath(); pctx.moveTo(140, 20); pctx.lineTo(140, 260); pctx.moveTo(20, 140); pctx.lineTo(260, 140); pctx.stroke();
+    pctx.setLineDash([]);
+    pctx.strokeStyle = sampleShown ? C.muted : C.fg; pctx.fillStyle = pctx.strokeStyle;
+    pctx.lineWidth = 18; pctx.lineCap = "round"; pctx.lineJoin = "round";
+    for (const st of strokes) {
+      if (st.length === 1) { pctx.beginPath(); pctx.arc(st[0].x, st[0].y, 9, 0, Math.PI * 2); pctx.fill(); continue; }
+      pctx.beginPath(); pctx.moveTo(st[0].x, st[0].y);
+      for (let i = 1; i < st.length; i++) pctx.lineTo(st[i].x, st[i].y);
+      pctx.stroke();
+    }
+  }
+  function pt(e) {
+    const r = pad.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * LOGICAL / r.width, y: (e.clientY - r.top) * LOGICAL / r.height };
+  }
+  pad.addEventListener("pointerdown", e => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    e.preventDefault();
+    try { pad.setPointerCapture(e.pointerId); } catch (_) {}
+    if (sampleShown) { strokes = []; sampleShown = false; }
+    drawing = true; strokes.push([pt(e)]); schedule();
+  });
+  pad.addEventListener("pointermove", e => {
+    if (!drawing) return;
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    const st = strokes[strokes.length - 1];
+    for (const ev of (evs.length ? evs : [e])) st.push(pt(ev));
+    schedule();
+  });
+  function endStroke() { if (!drawing) return; drawing = false; run(true); }
+  pad.addEventListener("pointerup", endStroke);
+  pad.addEventListener("pointercancel", endStroke);
+  document.getElementById("clear").addEventListener("click", () => {
+    strokes = []; sampleShown = false; renderPad(); run(false);
+  });
+
+  let pending = false;
+  function schedule() {
+    if (pending) return; pending = true;
+    requestAnimationFrame(() => { pending = false; renderPad(); run(false); });
+  }
+
+  // ---------- preprocessing ----------
+  const HR = 256, F = 8; // render strokes at 256x256, average 8x8 blocks -> 32x32
+  const hi = document.createElement("canvas"); hi.width = hi.height = HR;
+  const hctx = hi.getContext("2d", { willReadFrequently: true });
+
+  function preprocess() {
+    const pts = strokes.flat();
+    if (!pts.length) return null;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+    const lw = 3.4;                       // stroke width in 32x32 units, close to load_digits strokes
+    const tH = 32 - lw - 0.8, tW = 28 - lw;
+    const s = Math.min(tH / Math.max(y1 - y0, 1), tW / Math.max(x1 - x0, 1), 0.3);
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, k = s * F;
+    hctx.setTransform(1, 0, 0, 1, 0, 0); hctx.fillStyle = "#000"; hctx.fillRect(0, 0, HR, HR);
+    hctx.setTransform(k, 0, 0, k, 16 * F - cx * k, 16 * F - cy * k);
+    hctx.strokeStyle = "#fff"; hctx.fillStyle = "#fff"; hctx.lineWidth = lw / s; hctx.lineCap = "round"; hctx.lineJoin = "round";
+    for (const st of strokes) {
+      if (st.length === 1) { hctx.beginPath(); hctx.arc(st[0].x, st[0].y, lw / s / 2, 0, Math.PI * 2); hctx.fill(); continue; }
+      hctx.beginPath(); hctx.moveTo(st[0].x, st[0].y);
+      for (let i = 1; i < st.length; i++) hctx.lineTo(st[i].x, st[i].y);
+      hctx.stroke();
+    }
+    const d = hctx.getImageData(0, 0, HR, HR).data;
+    const gray = new Float32Array(1024);
+    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+      let sum = 0;
+      for (let dy = 0; dy < F; dy++) for (let dx = 0; dx < F; dx++) sum += d[((y * F + dy) * HR + x * F + dx) * 4];
+      gray[y * 32 + x] = sum / (F * F * 255);
+    }
+    // sharpen with [[0,-1,0],[-1,5,-1],[0,-1,0]]
+    const g = (x, y) => (x < 0 || y < 0 || x > 31 || y > 31) ? 0 : gray[y * 32 + x];
+    const sharp = new Float32Array(1024);
+    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+      const v = 5 * g(x, y) - g(x - 1, y) - g(x + 1, y) - g(x, y - 1) - g(x, y + 1);
+      sharp[y * 32 + x] = Math.max(0, Math.min(1, v));
+    }
+    const counts = new Uint8Array(64);
+    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++)
+      if (sharp[y * 32 + x] >= 0.5) counts[(y >> 2) * 8 + (x >> 2)]++;
+    return { gray, sharp, counts, x: Array.from(counts, c => c / 16) };
+  }
+
+  // ---------- pipeline previews ----------
+  const pGray = document.getElementById("pGray"), pSharp = document.getElementById("pSharp"), pIn = document.getElementById("pIn");
+  function drawGrid32(cv, arr, threshold) {
+    const c = cv.getContext("2d"), n = cv.width / 32;
+    c.fillStyle = C.pad; c.fillRect(0, 0, cv.width, cv.height);
+    if (!arr) return;
+    for (let i = 0; i < 1024; i++) {
+      let v = arr[i]; if (threshold) v = v >= 0.5 ? 1 : (v > 0 ? 0.12 : 0);
+      if (v <= 0) continue;
+      c.fillStyle = rgba(C.fg, v); c.fillRect((i % 32) * n, Math.floor(i / 32) * n, n, n);
+    }
+  }
+  function drawInput(counts) {
+    const c = pIn.getContext("2d"), n = pIn.width / 8;
+    c.fillStyle = C.pad; c.fillRect(0, 0, pIn.width, pIn.height);
+    c.strokeStyle = rgba(C.line, 1); c.lineWidth = 1;
+    for (let i = 1; i < 8; i++) { c.beginPath(); c.moveTo(i * n + 0.5, 0); c.lineTo(i * n + 0.5, pIn.height); c.moveTo(0, i * n + 0.5); c.lineTo(pIn.width, i * n + 0.5); c.stroke(); }
+    if (!counts) return;
+    c.font = `500 ${Math.round(n * 0.42)}px "IBM Plex Mono", monospace`; c.textAlign = "center"; c.textBaseline = "middle";
+    for (let i = 0; i < 64; i++) {
+      const v = counts[i], x = (i % 8) * n, y = Math.floor(i / 8) * n;
+      if (v) { c.fillStyle = rgba(C.fg, v / 16); c.fillRect(x + 1, y + 1, n - 1, n - 1); }
+      c.fillStyle = v > 9 ? C.pad : rgba(C.muted, v ? 1 : 0.45);
+      c.fillText(String(v), x + n / 2, y + n / 2 + 1);
+    }
+  }
+
+  // ---------- network view ----------
+  const netbox = document.getElementById("netbox"), net = document.getElementById("net"), nctx = net.getContext("2d");
+  let state = null, progress = 3.2, animId = 0;
+
+  function layout(W, H) {
+    const top = 34, bottom = 12, padX = 14, labelW = 26;
+    const usableH = H - top - bottom;
+    const g = Math.min(usableH * 0.62, W * (W < 480 ? 0.3 : 0.24));
+    const gx = padX, gy = top + (usableH - g) / 2, cell = g / 8;
+    const xa = gx + g, xb = W - padX - labelW;
+    const span = xb - xa;
+    const cols = [null, xa + span * 0.34, xa + span * 0.68, xb];
+    const pos = [[], [], [], []];
+    for (let i = 0; i < 64; i++) pos[0].push({ x: gx + (i % 8 + 0.5) * cell, y: gy + (Math.floor(i / 8) + 0.5) * cell });
+    for (let l = 1; l <= 2; l++) for (let j = 0; j < 32; j++) pos[l].push({ x: cols[l], y: top + 6 + (usableH - 12) * j / 31 });
+    for (let j = 0; j < 10; j++) pos[3].push({ x: cols[3], y: top + usableH * (0.06 + 0.88 * j / 9) });
+    return { pos, cols, gx, gy, g, cell, top };
+  }
+
+  function analyze(acts) {
+    // top edges per layer by |w * a|
+    const keep = [110, 80, 40], edges = [];
+    for (let l = 0; l < 3; l++) {
+      const L = LAYERS[l], a = acts[l], list = [];
+      for (let j = 0; j < L.nout; j++) for (let i = 0; i < L.nin; i++) {
+        const c = L.W[j * L.nin + i] * a[i];
+        if (c !== 0) list.push({ i, j, c });
+      }
+      list.sort((p, q) => Math.abs(q.c) - Math.abs(p.c));
+      const top = list.slice(0, keep[l]);
+      edges.push({ list: top, max: top.length ? Math.abs(top[0].c) : 1 });
+    }
+    // trace back from the winning output
+    const out = acts[3];
+    let win = 0; for (let j = 1; j < 10; j++) if (out[j] > out[win]) win = j;
+    const contrib = (l, i, j) => LAYERS[l].W[j * LAYERS[l].nin + i] * acts[l][i];
+    const pickTop = (scores, n) => scores.map((s, i) => ({ s, i })).filter(o => o.s > 0).sort((a, b) => b.s - a.s).slice(0, n).map(o => o.i);
+    const h2 = pickTop(Array.from({ length: 32 }, (_, k) => contrib(2, k, win)), 3);
+    const h1 = pickTop(Array.from({ length: 32 }, (_, j) => h2.reduce((s, k) => s + Math.max(0, contrib(1, j, k)), 0)), 4);
+    const px = pickTop(Array.from({ length: 64 }, (_, i) => h1.reduce((s, j) => s + Math.max(0, contrib(0, i, j)), 0)), 7);
+    const path = [[], [], []];
+    for (const i of px) for (const j of h1) if (contrib(0, i, j) > 0) path[0].push({ i, j });
+    for (const j of h1) for (const k of h2) if (contrib(1, j, k) > 0) path[1].push({ i: j, j: k });
+    for (const k of h2) path[2].push({ i: k, j: win });
+    return { edges, win, path, hl: [new Set(px), new Set(h1), new Set(h2), new Set([win])] };
+  }
+
+  function sizeNet() {
+    const r = net.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    net.width = Math.round(r.width * dpr); net.height = Math.round(r.height * dpr);
+  }
+
+  function renderNet() {
+    const dpr = window.devicePixelRatio || 1, W = net.width / dpr, H = net.height / dpr;
+    nctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    nctx.clearRect(0, 0, W, H);
+    const Lo = layout(W, H), P = Lo.pos;
+    const rev = l => Math.max(0, Math.min(1, progress - l));
+
+    // column labels
+    nctx.font = '500 10.5px "IBM Plex Mono", monospace'; nctx.fillStyle = C.muted; nctx.textBaseline = "alphabetic";
+    nctx.textAlign = "left"; nctx.fillText(W < 480 ? T.inShort : T.inLong, Lo.gx, 14);
+    const narrow = W < 480;
+    nctx.textAlign = "center"; nctx.fillText(narrow ? T.h1Short : T.h1Long, Lo.cols[1], 14); nctx.fillText(narrow ? T.h2Short : T.h2Long, Lo.cols[2], 14);
+    nctx.textAlign = "right"; nctx.fillText(T.outLabel, W - 6, 14);
+
+    // input grid frame
+    nctx.strokeStyle = C.line; nctx.lineWidth = 1;
+    nctx.strokeRect(Lo.gx + 0.5, Lo.gy + 0.5, Lo.g, Lo.g);
+
+    if (state) {
+      const A = state.acts, an = state.an;
+      // faint edges
+      for (let l = 0; l < 3; l++) {
+        const r = rev(l); if (!r) continue;
+        for (const e of an.edges[l].list) {
+          const m = Math.abs(e.c) / an.edges[l].max;
+          nctx.strokeStyle = rgba(e.c > 0 ? C.accent : C.neg, (0.06 + 0.5 * m) * r);
+          nctx.lineWidth = 0.6 + 1.2 * m;
+          const a = P[l][e.i], b = P[l + 1][e.j];
+          nctx.beginPath(); nctx.moveTo(a.x, a.y); nctx.lineTo(b.x, b.y); nctx.stroke();
+        }
+      }
+      // highlighted path
+      for (let l = 0; l < 3; l++) {
+        const r = rev(l); if (!r) continue;
+        nctx.strokeStyle = rgba(C.accent, 0.95 * r); nctx.lineWidth = 2.4;
+        for (const e of an.path[l]) {
+          const a = P[l][e.i], b = P[l + 1][e.j];
+          nctx.beginPath(); nctx.moveTo(a.x, a.y); nctx.lineTo(b.x, b.y); nctx.stroke();
+        }
+      }
+    }
+
+    // input cells
+    for (let i = 0; i < 64; i++) {
+      const p = P[0][i], v = state ? state.acts[0][i] : 0, h = Lo.cell;
+      if (v > 0) { nctx.fillStyle = rgba(C.fg, v * 0.85); nctx.fillRect(p.x - h / 2 + 1, p.y - h / 2 + 1, h - 2, h - 2); }
+      if (state && state.an.hl[0].has(i) && rev(0)) {
+        nctx.strokeStyle = rgba(C.accent, rev(0)); nctx.lineWidth = 2;
+        nctx.strokeRect(p.x - h / 2 + 1.5, p.y - h / 2 + 1.5, h - 3, h - 3);
+      }
+    }
+    // hidden + output nodes
+    for (let l = 1; l <= 3; l++) {
+      const r = rev(l - 1) * Math.min(1, Math.max(0, progress - l + 0.6) / 0.6 + 0.0);
+      const rad = l === 3 ? 7 : 4.2;
+      for (let j = 0; j < P[l].length; j++) {
+        const p = P[l][j];
+        nctx.beginPath(); nctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+        nctx.fillStyle = C.panel; nctx.fill();
+        if (state && r > 0) {
+          const v = state.acts[l][j];
+          nctx.fillStyle = rgba(v >= 0 ? C.accent : C.neg, Math.abs(v) * r);
+          nctx.fill();
+        }
+        nctx.strokeStyle = C.line; nctx.lineWidth = 1; nctx.stroke();
+        if (state && state.an.hl[l].has(j) && r > 0) {
+          nctx.beginPath(); nctx.arc(p.x, p.y, rad + 3, 0, Math.PI * 2);
+          nctx.strokeStyle = rgba(C.accent, r); nctx.lineWidth = 1.8; nctx.stroke();
+        }
+      }
+    }
+    // output labels
+    nctx.textAlign = "left"; nctx.textBaseline = "middle";
+    for (let j = 0; j < 10; j++) {
+      const p = P[3][j], isWin = state && state.an.win === j && progress >= 2.6;
+      nctx.font = (isWin ? "600 15px " : "500 12px ") + '"IBM Plex Mono", monospace';
+      nctx.fillStyle = isWin ? C.accent : C.muted;
+      nctx.fillText(String(j), p.x + 12, p.y + 1);
+    }
+  }
+
+  function animate() {
+    cancelAnimationFrame(animId);
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) { progress = 3.2; renderNet(); updateOutput(); return; }
+    const t0 = performance.now(), dur = 1100;
+    progress = 0;
+    setOutputPending();
+    const step = now => {
+      progress = 3.2 * Math.min(1, (now - t0) / dur);
+      renderNet();
+      if (progress < 3.2) animId = requestAnimationFrame(step); else updateOutput();
+    };
+    animId = requestAnimationFrame(step);
+  }
+
+  // ---------- output readout ----------
+  const bars = document.getElementById("bars"), big = document.getElementById("big"), chip = document.getElementById("chip"), why = document.getElementById("why");
+  const rows = [];
+  for (let j = 0; j < 10; j++) {
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<span>${j}</span><div class="track"><div class="zero"></div><div class="fill"></div></div><span class="v">–</span>`;
+    bars.appendChild(row);
+    rows.push({ row, fill: row.querySelector(".fill"), v: row.querySelector(".v") });
+  }
+  const fmt = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(2);
+
+  function setOutputPending() { big.classList.add("empty"); }
+  function updateOutput() {
+    if (!state) {
+      big.textContent = "–"; big.classList.add("empty"); chip.hidden = true;
+      why.textContent = T.empty;
+      for (const r of rows) { r.row.classList.remove("win"); r.fill.style.left = "50%"; r.fill.style.width = "0"; r.v.textContent = "–"; }
+      return;
+    }
+    const out = state.acts[3], win = state.an.win;
+    let second = win === 0 ? 1 : 0;
+    for (let j = 0; j < 10; j++) if (j !== win && out[j] > out[second]) second = j;
+    const margin = out[win] - out[second];
+    big.textContent = String(win); big.classList.remove("empty");
+    chip.hidden = false;
+    if (out[win] > 0.3 && margin > 1.0) { chip.textContent = T.sure; chip.className = "chip sure"; }
+    else if (margin > 0.4) { chip.textContent = T.maybe; chip.className = "chip maybe"; }
+    else { chip.textContent = T.unsure(win, second); chip.className = "chip unsure"; }
+    why.textContent = out[win] < 0
+      ? T.whyNeg(win, fmt(out[win]))
+      : T.why(win, fmt(out[win]), second, fmt(out[second]), margin.toFixed(2));
+    for (let j = 0; j < 10; j++) {
+      const v = out[j], r = rows[j];
+      r.row.classList.toggle("win", j === win);
+      r.fill.style.left = (v >= 0 ? 50 : 50 + v * 50) + "%";
+      r.fill.style.width = Math.abs(v) * 50 + "%";
+      r.v.textContent = fmt(v);
+    }
+  }
+
+  // ---------- main ----------
+  function run(anim) {
+    const pre = preprocess();
+    drawGrid32(pGray, pre && pre.gray, false);
+    drawGrid32(pSharp, pre && pre.sharp, true);
+    drawInput(pre && pre.counts);
+    if (!pre) { state = null; cancelAnimationFrame(animId); progress = 3.2; renderNet(); updateOutput(); return; }
+    const acts = forward(pre.x);
+    state = { acts, an: analyze(acts), x: pre.x };
+    window.__digits = { win: state.an.win, out: Array.from(acts[3]), counts: Array.from(pre.counts) };
+    if (anim) animate();
+    else { cancelAnimationFrame(animId); progress = 3.2; renderNet(); updateOutput(); }
+  }
+
+  function redrawAll() { readColors(); renderPad(); run(false); }
+
+  readColors();
+  applyStatic();
+  document.getElementById("lang").addEventListener("click", () => {
+    lang = lang === "zh" ? "en" : "zh"; T = I18N[lang];
+    try { localStorage.setItem("digits-lang", lang); } catch (_) {}
+    applyStatic(); renderNet(); if (progress >= 3.2) updateOutput();
+  });
+  strokes = sample3();
+  sizePad(); sizeNet();
+  renderPad(); run(true);
+
+  new ResizeObserver(() => { sizePad(); renderPad(); sizeNet(); renderNet(); }).observe(document.querySelector(".col-left"));
+  new ResizeObserver(() => { sizeNet(); renderNet(); }).observe(netbox);
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redrawAll);
+  new MutationObserver(redrawAll).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { renderNet(); drawInput(state ? Array.from(preprocess().counts) : null); });
+})();
+</script>
+</body>
+</html>
